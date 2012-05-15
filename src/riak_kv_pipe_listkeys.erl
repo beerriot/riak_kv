@@ -86,35 +86,37 @@ process(Input, _Last, #state{p=Partition, fd=FittingDetails}=State) ->
 keysend_loop(ReqId, Partition, FittingDetails) ->
     receive
         {ReqId, {From, Bucket, Keys}} ->
-            Result = keysend(Bucket, Keys, Partition, FittingDetails),
-            case Result of
+            BKeys = [ {Bucket, Key} || Key <- Keys ],
+            case keysend(BKeys, Partition, FittingDetails) of
                 ok ->
                     riak_kv_vnode:ack_keys(From),
                     keysend_loop(ReqId, Partition, FittingDetails);
                 Error ->
+                    %% TODO: keysend/3 has no errors to bubble yet
                     Error
             end;
         {ReqId, {Bucket, Keys}} ->
-            Result = keysend(Bucket, Keys, Partition, FittingDetails),
-            case Result of
+            BKeys = [ {Bucket, Key} || Key <- Keys ],
+            case keysend(BKeys, Partition, FittingDetails) of
                 ok ->
                     keysend_loop(ReqId, Partition, FittingDetails);
                 Error ->
+                    %% TODO: keysend/3 has no errors to bubble yet
                     Error
             end;
         {ReqId, done} ->
             ok
     end.
 
-keysend(_Bucket, [], _Partition, _FittingDetails) ->
-    ok;
-keysend(Bucket, [Key | Keys], Partition, FittingDetails) ->
-    case riak_pipe_vnode_worker:send_output(
-           {Bucket, Key}, Partition, FittingDetails) of
-        ok ->
-            keysend(Bucket, Keys, Partition, FittingDetails);
-        ER ->
-            ER
+keysend(BKeys, Partition, FittingDetails) ->
+    %% TODO: use core abilities to decide whether to use list inputs
+    %% TODO: handle errors in enqueueing
+    case riak_pipe_vnode_worker:send_output_list(
+           BKeys, Partition, FittingDetails) of
+        [] ->
+            ok;
+        Rest ->
+            keysend(Rest, Partition, FittingDetails)
     end.
 
 %% @doc Unused.
