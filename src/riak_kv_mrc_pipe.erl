@@ -511,11 +511,16 @@ send_inputs(Pipe, Inputs) ->
 %% a list of keys.
 -spec send_inputs(riak_pipe:pipe(), input(), timeout()) ->
          ok | term().
-send_inputs(Pipe, BucketKeyList, _Timeout) when is_list(BucketKeyList) ->
-    [riak_pipe:queue_work(Pipe, BKey)
-     || BKey <- BucketKeyList],
-    riak_pipe:eoi(Pipe),
-    ok;
+send_inputs(Pipe, BucketKeyList, Timeout) when is_list(BucketKeyList) ->
+    %% TODO: use core abilities to decide whether to use list inputs
+    case riak_pipe:queue_work_list(Pipe, BucketKeyList) of
+        [] ->
+            riak_pipe:eoi(Pipe),
+            ok;
+        Rest ->
+            %% TODO: timeout, sleep?
+            send_inputs(Pipe, Rest, Timeout)
+    end;
 send_inputs(Pipe, Bucket, Timeout) when is_binary(Bucket) ->
     riak_kv_pipe_listkeys:queue_existing_pipe(Pipe, Bucket, Timeout);
 send_inputs(Pipe, {Bucket, FilterExprs}, Timeout) ->
