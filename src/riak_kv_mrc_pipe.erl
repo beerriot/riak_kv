@@ -511,16 +511,10 @@ send_inputs(Pipe, Inputs) ->
 %% a list of keys.
 -spec send_inputs(riak_pipe:pipe(), input(), timeout()) ->
          ok | term().
-send_inputs(Pipe, BucketKeyList, Timeout) when is_list(BucketKeyList) ->
-    %% TODO: use core abilities to decide whether to use list inputs
-    case riak_pipe:queue_work_list(Pipe, BucketKeyList) of
-        [] ->
-            riak_pipe:eoi(Pipe),
-            ok;
-        Rest ->
-            %% TODO: timeout, sleep?
-            send_inputs(Pipe, Rest, Timeout)
-    end;
+send_inputs(Pipe, BucketKeyList, _Timeout) when is_list(BucketKeyList) ->
+    queue_whole_list(Pipe, BucketKeyList),
+    riak_pipe:eoi(Pipe),
+    ok;
 send_inputs(Pipe, Bucket, Timeout) when is_binary(Bucket) ->
     riak_kv_pipe_listkeys:queue_existing_pipe(Pipe, Bucket, Timeout);
 send_inputs(Pipe, {Bucket, FilterExprs}, Timeout) ->
@@ -581,8 +575,8 @@ send_key_list(Pipe, Bucket, ReqId) ->
     receive
         {ReqId, {keys, Keys}} ->
             %% Get results from list keys operation.
-            [riak_pipe:queue_work(Pipe, {Bucket, Key})
-             || Key <- Keys],
+            BKeys = [ {Bucket, Key} || Key <- Keys ],
+            queue_whole_list(Pipe, BKeys),
             send_key_list(Pipe, Bucket, ReqId);
 
         {ReqId, {results, Results}} ->
@@ -590,11 +584,12 @@ send_key_list(Pipe, Bucket, ReqId) ->
             %% Props}] formats. If props exists, use it as keydata.
             F = fun
                     ({Key, Props}) ->
-                        riak_pipe:queue_work(Pipe, {{Bucket, Key}, Props});
+                        {{Bucket, Key}, Props};
                     (Key) ->
-                        riak_pipe:queue_work(Pipe, {Bucket, Key})
+                        {Bucket, Key}
                 end,
-            [F(X) || X <- Results],
+            BKeys = [F(X) || X <- Results],
+            queue_whole_list(Pipe, BKeys),
             send_key_list(Pipe, Bucket, ReqId);
 
         {ReqId, {error, Reason}} ->
@@ -604,6 +599,16 @@ send_key_list(Pipe, Bucket, ReqId) ->
             %% Operation has finished.
             riak_pipe:eoi(Pipe),
             ok
+    end.
+
+queue_whole_list(Pipe, BKeys) ->
+    %% TODO: use core abilities to decide whether to use list inputs
+    case riak_pipe:queue_work_list(Pipe, BKeys) of
+        [] ->
+            ok;
+        Rest ->
+            %% TODO: timeout, sleep?
+            queue_whole_list(Pipe, Rest)
     end.
 
 %% @equiv collect_outputs(Pipe, NumKeeps, 60000)
