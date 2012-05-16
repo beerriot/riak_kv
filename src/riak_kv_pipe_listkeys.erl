@@ -92,7 +92,6 @@ keysend_loop(ReqId, Partition, FittingDetails) ->
                     riak_kv_vnode:ack_keys(From),
                     keysend_loop(ReqId, Partition, FittingDetails);
                 Error ->
-                    %% TODO: keysend/3 has no errors to bubble yet
                     Error
             end;
         {ReqId, {Bucket, Keys}} ->
@@ -101,7 +100,6 @@ keysend_loop(ReqId, Partition, FittingDetails) ->
                 ok ->
                     keysend_loop(ReqId, Partition, FittingDetails);
                 Error ->
-                    %% TODO: keysend/3 has no errors to bubble yet
                     Error
             end;
         {ReqId, done} ->
@@ -110,13 +108,14 @@ keysend_loop(ReqId, Partition, FittingDetails) ->
 
 keysend(BKeys, Partition, FittingDetails) ->
     %% TODO: use core abilities to decide whether to use list inputs
-    %% TODO: handle errors in enqueueing
     case riak_pipe_vnode_worker:send_output_list(
            BKeys, Partition, FittingDetails) of
-        [] ->
+        {[], []} ->
             ok;
-        Rest ->
-            keysend(Rest, Partition, FittingDetails)
+        {Rest, []} ->
+            keysend(Rest, Partition, FittingDetails);
+        {_Rest, Errors} ->
+            {error, Errors}
     end.
 
 %% @doc Unused.

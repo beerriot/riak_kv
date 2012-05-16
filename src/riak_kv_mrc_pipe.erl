@@ -604,11 +604,13 @@ send_key_list(Pipe, Bucket, ReqId) ->
 queue_whole_list(Pipe, BKeys) ->
     %% TODO: use core abilities to decide whether to use list inputs
     case riak_pipe:queue_work_list(Pipe, BKeys) of
-        [] ->
+        {[],[]} ->
             ok;
-        Rest ->
+        {Rest, []} ->
             %% TODO: timeout, sleep?
-            queue_whole_list(Pipe, Rest)
+            queue_whole_list(Pipe, Rest);
+        {_,Errors} ->
+            {error, Errors}
     end.
 
 %% @equiv collect_outputs(Pipe, NumKeeps, 60000)
