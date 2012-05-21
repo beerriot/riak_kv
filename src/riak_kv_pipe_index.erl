@@ -84,7 +84,8 @@ keysend_loop(ReqId, Partition, FittingDetails) ->
         {ReqId, {error, _Reason} = ER} ->
             ER;
         {ReqId, {Bucket, Keys}} ->
-            case keysend(Bucket, Keys, Partition, FittingDetails) of
+            BKeys = [ {Bucket, Key} || Key <- Keys ],
+            case keysend(BKeys, Partition, FittingDetails) of
                 ok ->
                     keysend_loop(ReqId, Partition, FittingDetails);
                 ER ->
@@ -94,15 +95,16 @@ keysend_loop(ReqId, Partition, FittingDetails) ->
             ok
     end.
 
-keysend(_Bucket, [], _Partition, _FittingDetails) ->
-    ok;
-keysend(Bucket, [Key | Keys], Partition, FittingDetails) ->
-    case riak_pipe_vnode_worker:send_output(
-           {Bucket, Key}, Partition, FittingDetails) of
-        ok ->
-            keysend(Bucket, Keys, Partition, FittingDetails);
-        ER ->
-            ER
+keysend(BKeys, Partition, FittingDetails) ->
+    %% TODO: use core abilities to decide whether to use list inputs
+    case riak_pipe_vnode_worker:send_output_list(
+           BKeys, Partition, FittingDetails) of
+        {[], []} ->
+            ok;
+        {Rest, []} ->
+            keysend(Rest, Partition, FittingDetails);
+        {_Rest, Errors} ->
+            {error, Errors}
     end.
 
 %% @doc Unused.
